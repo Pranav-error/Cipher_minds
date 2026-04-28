@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
   // Utility: generate agent keypair (for demo setup)
   if (action === 'keygen') {
-    const privKey = ed.utils.randomPrivateKey();
+    const privKey = ed.utils.randomSecretKey();
     const pubKey = await ed.getPublicKeyAsync(privKey);
     return NextResponse.json({
       privateKeyHex: Buffer.from(privKey).toString('hex'),

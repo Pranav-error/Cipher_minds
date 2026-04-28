@@ -45,7 +45,7 @@ export function getAgent(agentId: string): RegisteredAgent | undefined {
 
 // Generate a new keypair for an agent
 export async function generateAgentKeypair(agentId: string): Promise<AgentKeypair> {
-  const privKey = ed.utils.randomPrivateKey();
+  const privKey = ed.utils.randomSecretKey();
   const pubKey = await ed.getPublicKeyAsync(privKey);
   return { agentId, privateKey: privKey, publicKey: pubKey };
 }

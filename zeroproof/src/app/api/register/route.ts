@@ -1,56 +1,63 @@
-// WebAuthn registration endpoints.
-// POST /api/register/options  → generate registration options
-// POST /api/register/verify   → verify and store credential
+// Stateless WebAuthn registration.
+// OPTIONS returns a signed challengeToken the client sends back in VERIFY.
+// VERIFY returns a signed credentialToken the client stores in localStorage.
 
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  generateRegistrationOptions,
-  verifyRegistrationResponse,
-} from '@simplewebauthn/server';
-import { saveCredential, saveChallenge, consumeChallenge } from '@/lib/sessionStore';
+import { generateRegistrationOptions, verifyRegistrationResponse } from '@simplewebauthn/server';
+import { signToken, verifyToken, type ChallengePayload, type CredentialPayload } from '@/lib/tokenSession';
 
 const RP_NAME = 'ZeroProof';
-const RP_ID = process.env.RP_ID ?? 'localhost';
-const ORIGIN = process.env.NEXT_PUBLIC_ORIGIN ?? 'http://localhost:3000';
+
+function getRpConfig(req: NextRequest) {
+  const host = req.headers.get('host') ?? 'localhost';
+  const rpId = process.env.RP_ID ?? host.split(':')[0];
+  const proto = host.startsWith('localhost') ? 'http' : 'https';
+  const origin = process.env.NEXT_PUBLIC_ORIGIN ?? `${proto}://${host}`;
+  return { rpId, origin };
+}
 
 export async function POST(req: NextRequest) {
   const url = new URL(req.url);
   const action = url.searchParams.get('action') ?? 'options';
+  const { rpId, origin } = getRpConfig(req);
 
   if (action === 'options') {
     const { userId, username } = await req.json();
 
     const options = await generateRegistrationOptions({
       rpName: RP_NAME,
-      rpID: RP_ID,
+      rpID: rpId,
       userName: username ?? userId,
       userID: new TextEncoder().encode(userId),
       attestationType: 'none',
-      authenticatorSelection: {
-        residentKey: 'preferred',
-        userVerification: 'preferred',
-      },
+      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
     });
 
-    // Store challenge for verification
-    saveChallenge(`reg:${userId}`, options.challenge);
+    // Sign challenge into a token — no server state needed
+    const challengeToken = await signToken({
+      challenge: options.challenge,
+      userId,
+      context: 'reg',
+      exp: Date.now() + 5 * 60 * 1000, // 5 min
+    } satisfies ChallengePayload);
 
-    return NextResponse.json(options);
+    return NextResponse.json({ options, challengeToken });
   }
 
   if (action === 'verify') {
-    const { userId, response } = await req.json();
-    const expectedChallenge = consumeChallenge(`reg:${userId}`);
-    if (!expectedChallenge) {
-      return NextResponse.json({ error: 'No challenge found' }, { status: 400 });
+    const { userId, response, challengeToken } = await req.json();
+
+    const payload = await verifyToken<ChallengePayload>(challengeToken);
+    if (!payload || payload.context !== 'reg' || payload.userId !== userId) {
+      return NextResponse.json({ error: 'Invalid or expired challenge token' }, { status: 400 });
     }
 
     try {
       const verification = await verifyRegistrationResponse({
         response,
-        expectedChallenge,
-        expectedOrigin: ORIGIN,
-        expectedRPID: RP_ID,
+        expectedChallenge: payload.challenge,
+        expectedOrigin: origin,
+        expectedRPID: rpId,
       });
 
       if (!verification.verified || !verification.registrationInfo) {
@@ -58,16 +65,19 @@ export async function POST(req: NextRequest) {
       }
 
       const { credential } = verification.registrationInfo;
+      const credentialId = Buffer.from(credential.id).toString('base64url');
+      const publicKeyHex = Buffer.from(credential.publicKey).toString('hex');
 
-      saveCredential({
-        credentialId: Buffer.from(credential.id).toString('base64url'),
-        publicKey: credential.publicKey,
+      // Sign credential into a token the client stores in localStorage
+      const credentialToken = await signToken({
+        credentialId,
+        publicKeyHex,
         counter: credential.counter,
         userId,
-        createdAt: Date.now(),
-      });
+        exp: Date.now() + 24 * 60 * 60 * 1000, // 24h
+      } satisfies CredentialPayload);
 
-      return NextResponse.json({ verified: true, credentialId: Buffer.from(credential.id).toString('base64url') });
+      return NextResponse.json({ verified: true, credentialId, credentialToken });
     } catch (err) {
       return NextResponse.json({ error: String(err) }, { status: 400 });
     }

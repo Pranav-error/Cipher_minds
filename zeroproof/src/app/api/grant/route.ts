@@ -1,91 +1,88 @@
-// Layer 0: Capability Grant endpoint.
-// POST /api/grant/options  → generate WebAuthn authentication options for signing the grant
-// POST /api/grant/verify   → verify WebAuthn assertion and store capability grant
+// Layer 0: Stateless Capability Grant.
+// Client sends credentialToken; server returns challengeToken (options) and grantToken (after verify).
 
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  generateAuthenticationOptions,
-  verifyAuthenticationResponse,
-} from '@simplewebauthn/server';
+import { generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
-import {
-  getCredential,
-  getCredentialByUser,
-  saveChallenge,
-  consumeChallenge,
-  saveGrant,
-  updateCounter,
-} from '@/lib/sessionStore';
+import { signToken, verifyToken, type ChallengePayload, type CredentialPayload, type GrantPayload } from '@/lib/tokenSession';
 import { grantCanonical, type AgentCapability } from '@/lib/capabilities';
 import { randomUUID } from 'crypto';
 
-const RP_ID = process.env.RP_ID ?? 'localhost';
-const ORIGIN = process.env.NEXT_PUBLIC_ORIGIN ?? 'http://localhost:3000';
+function getRpConfig(req: NextRequest) {
+  const host = req.headers.get('host') ?? 'localhost';
+  const rpId = process.env.RP_ID ?? host.split(':')[0];
+  const proto = host.startsWith('localhost') ? 'http' : 'https';
+  const origin = process.env.NEXT_PUBLIC_ORIGIN ?? `${proto}://${host}`;
+  return { rpId, origin };
+}
 
 export async function POST(req: NextRequest) {
   const url = new URL(req.url);
   const action = url.searchParams.get('action') ?? 'options';
+  const { rpId, origin } = getRpConfig(req);
 
   if (action === 'options') {
-    const { userId, capabilities } = await req.json() as {
+    const { userId, capabilities, credentialToken } = await req.json() as {
       userId: string;
       capabilities: AgentCapability[];
+      credentialToken: string;
     };
 
-    const cred = getCredentialByUser(userId);
-    if (!cred) {
-      return NextResponse.json({ error: 'User not registered' }, { status: 404 });
+    const cred = await verifyToken<CredentialPayload>(credentialToken);
+    if (!cred || cred.userId !== userId) {
+      return NextResponse.json({ error: 'Invalid credential token — re-register' }, { status: 401 });
     }
 
-    // Build the proposed grant (without assertion yet) so we can hash it as challenge
     const sessionId = randomUUID();
     const issuedAt = Date.now();
-    const expiresAt = issuedAt + 2 * 60 * 60 * 1000; // 2 hours
+    const expiresAt = issuedAt + 2 * 60 * 60 * 1000;
 
     const proposedGrant = { sessionId, granted: capabilities, issuedAt, expiresAt };
     const grantJson = grantCanonical(proposedGrant);
 
-    // SHA-256 of grantJson as the WebAuthn challenge
     const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(grantJson));
-    const challenge = isoBase64URL.fromBuffer(hashBuf);
+    const challenge = isoBase64URL.fromBuffer(new Uint8Array(hashBuf));
 
     const options = await generateAuthenticationOptions({
-      rpID: RP_ID,
+      rpID: rpId,
       challenge,
       allowCredentials: [{ id: cred.credentialId }],
       userVerification: 'preferred',
     });
 
-    saveChallenge(`grant:${sessionId}`, options.challenge);
-    // Temporarily store proposed grant data so verify can reconstruct
-    saveChallenge(`grant-data:${sessionId}`, grantJson);
+    const challengeToken = await signToken({
+      challenge: options.challenge,
+      userId,
+      context: 'grant',
+      extra: grantJson,
+      exp: Date.now() + 5 * 60 * 1000,
+    } satisfies ChallengePayload);
 
-    return NextResponse.json({ options, sessionId });
+    return NextResponse.json({ options, sessionId, challengeToken });
   }
 
   if (action === 'verify') {
-    const { sessionId, userId, response } = await req.json();
+    const { userId, response, credentialToken, challengeToken } = await req.json();
 
-    const expectedChallenge = consumeChallenge(`grant:${sessionId}`);
-    const grantJson = consumeChallenge(`grant-data:${sessionId}`);
-    if (!expectedChallenge || !grantJson) {
-      return NextResponse.json({ error: 'No challenge found' }, { status: 400 });
+    const cred = await verifyToken<CredentialPayload>(credentialToken);
+    if (!cred || cred.userId !== userId) {
+      return NextResponse.json({ error: 'Invalid credential token' }, { status: 401 });
     }
 
-    const cred = getCredentialByUser(userId);
-    if (!cred) {
-      return NextResponse.json({ error: 'User not registered' }, { status: 404 });
+    const challengePayload = await verifyToken<ChallengePayload>(challengeToken);
+    if (!challengePayload || challengePayload.context !== 'grant' || challengePayload.userId !== userId) {
+      return NextResponse.json({ error: 'Invalid or expired challenge token' }, { status: 400 });
     }
 
     try {
       const verification = await verifyAuthenticationResponse({
         response,
-        expectedChallenge,
-        expectedOrigin: ORIGIN,
-        expectedRPID: RP_ID,
+        expectedChallenge: challengePayload.challenge,
+        expectedOrigin: origin,
+        expectedRPID: rpId,
         credential: {
           id: cred.credentialId,
-          publicKey: cred.publicKey,
+          publicKey: Buffer.from(cred.publicKeyHex, 'hex'),
           counter: cred.counter,
         },
       });
@@ -94,13 +91,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Assertion failed' }, { status: 400 });
       }
 
-      updateCounter(cred.credentialId, verification.authenticationInfo.newCounter);
+      const grant = JSON.parse(challengePayload.extra!);
 
-      const grant = JSON.parse(grantJson);
-      grant.webauthnAssertion = JSON.stringify(response);
-      saveGrant(grant);
+      // Sign the grant into a token the client stores in localStorage
+      const grantToken = await signToken({
+        sessionId: grant.sessionId,
+        granted: grant.granted,
+        issuedAt: grant.issuedAt,
+        expiresAt: grant.expiresAt,
+      } satisfies GrantPayload);
 
-      return NextResponse.json({ verified: true, sessionId, grant });
+      return NextResponse.json({ verified: true, sessionId: grant.sessionId, grant, grantToken });
     } catch (err) {
       return NextResponse.json({ error: String(err) }, { status: 400 });
     }

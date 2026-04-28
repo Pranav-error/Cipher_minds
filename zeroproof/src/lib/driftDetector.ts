@@ -5,7 +5,8 @@
 import type { TransformType } from './agentAttestation';
 
 // Lazy-loaded pipeline
-let pipeline: ((sentences: string[]) => Promise<{ data: Float32Array }[]>) | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let pipeline: ((sentences: string[]) => Promise<any[]>) | null = null;
 
 async function getEmbedder() {
   if (pipeline) return pipeline;
@@ -96,7 +97,7 @@ export async function verifyTransform(
       if (embedder) {
         try {
           const [recEmb, fwdEmb] = await embedder([received.slice(0, 512), forwarded.slice(0, 512)]);
-          const sim = cosineSimilarity(recEmb.data as Float32Array, fwdEmb.data as Float32Array);
+          const sim = cosineSimilarity(new Float32Array(recEmb.data), new Float32Array(fwdEmb.data));
           const threshold = transformType === 'SUMMARIZE' ? 0.55 : 0.4;
           if (sim >= threshold) {
             return { valid: true, transformType, reason: `Semantic similarity ${sim.toFixed(3)} ≥ threshold ${threshold}`, similarity: sim };
