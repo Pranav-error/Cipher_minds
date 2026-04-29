@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       userName: username ?? userId,
       userID: new TextEncoder().encode(userId),
       attestationType: 'none',
-      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred', authenticatorAttachment: 'platform' },
     });
 
     // Sign challenge into a token — no server state needed
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       }
 
       const { credential } = verification.registrationInfo;
-      const credentialId = Buffer.from(credential.id).toString('base64url');
+      const credentialId = credential.id; // Already Base64URLString in @simplewebauthn/server v13
       const publicKeyHex = Buffer.from(credential.publicKey).toString('hex');
 
       // Sign credential into a token the client stores in localStorage

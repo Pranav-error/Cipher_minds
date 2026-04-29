@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { Fingerprint, CheckCircle2 } from 'lucide-react';
 
 interface Props {
-  onGranted: (sessionId: string, capabilities: AgentCapability[]) => void;
+  onGranted: (sessionId: string, capabilities: AgentCapability[], grantToken: string) => void;
   userId: string;
 }
 
@@ -47,9 +47,9 @@ export function CapabilityGranter({ onGranted, userId }: Props) {
     try {
       const { grantCapabilities } = await import('@/lib/webauthnClient');
       const caps = Array.from(selected);
-      const { sessionId } = await grantCapabilities(userId, caps);
+      const { sessionId, grantToken } = await grantCapabilities(userId, caps);
       setStatus('done');
-      onGranted(sessionId, caps);
+      onGranted(sessionId, caps, grantToken);
     } catch (err) {
       setError(String(err));
       setStatus('error');

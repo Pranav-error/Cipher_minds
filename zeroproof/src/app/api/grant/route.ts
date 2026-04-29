@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     const options = await generateAuthenticationOptions({
       rpID: rpId,
       challenge,
-      allowCredentials: [{ id: cred.credentialId }],
+      allowCredentials: [{ id: cred.credentialId, transports: ['internal'] }],
       userVerification: 'preferred',
     });
 
