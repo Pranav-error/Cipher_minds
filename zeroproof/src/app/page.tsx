@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Shield, Fingerprint, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Shield, Fingerprint, CheckCircle2, AlertTriangle, Code2, Package, ArrowRight as Arrow } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -84,6 +84,91 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {/* SDK Hero Banner */}
+      <div className="border-b border-zinc-800 bg-zinc-900/50">
+        <div className="mx-auto max-w-6xl px-6 py-10 space-y-8">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-blue-400">
+              <Package className="h-3.5 w-3.5" />
+              Drop-in SDK for any LLM app
+            </div>
+            <h2 className="text-2xl font-bold tracking-tight">Add cryptographic security in 3 lines</h2>
+            <p className="text-sm text-zinc-400 max-w-xl">
+              ZeroProof wraps your existing LLM calls. No architecture changes. Every prompt gets a hardware-signed proof — tamper, replay, and injection attempts are blocked before they reach your model.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* Before */}
+            <div className="rounded-xl border border-red-500/20 bg-zinc-950 overflow-hidden">
+              <div className="flex items-center gap-2 border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-xs font-semibold text-red-400">
+                <span className="h-2 w-2 rounded-full bg-red-500" />
+                Before ZeroProof — unprotected
+              </div>
+              <pre className="p-4 text-xs leading-relaxed text-zinc-300 font-mono overflow-x-auto">{`// Any attacker can intercept & modify this
+const response = await openai.chat
+  .completions.create({
+    messages: [{
+      role: 'user',
+      content: prompt   // ← unverified, unsigned
+    }]
+  })`}</pre>
+            </div>
+
+            {/* After */}
+            <div className="rounded-xl border border-emerald-500/20 bg-zinc-950 overflow-hidden">
+              <div className="flex items-center gap-2 border-b border-emerald-500/20 bg-emerald-500/5 px-4 py-2 text-xs font-semibold text-emerald-400">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                After ZeroProof — cryptographically secured
+              </div>
+              <pre className="p-4 text-xs leading-relaxed text-zinc-300 font-mono overflow-x-auto">{`import { ZeroProof } from 'zeroproof-sdk'
+const zp = new ZeroProof({ baseUrl: YOUR_SERVER })
+
+// 1. Register once — stores keypair in Secure Enclave
+await zp.register(userId)
+
+// 2. Sign + verify prompt with Touch ID (one call)
+const { ok, prompt } = await zp.signAndVerify(
+  userId, userMessage, sessionId
+)
+if (!ok) return unauthorized()
+
+// 3. Safe to call your LLM — prompt is verified
+const response = await openai.chat
+  .completions.create({
+    messages: [{ role: 'user', content: prompt }]
+  })`}</pre>
+            </div>
+          </div>
+
+          {/* How it works steps */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { icon: '🔑', title: 'Register Once', desc: 'Hardware keypair generated in Secure Enclave. Private key never leaves device.' },
+              { icon: '✍️', title: 'Sign Every Prompt', desc: 'SHA-256 hash signed by Touch ID. Any in-transit modification breaks the signature.' },
+              { icon: '🛡️', title: 'Verify on Server', desc: 'Re-hash, check signature, consume nonce, validate capabilities. All before LLM sees it.' },
+              { icon: '🤖', title: 'Safe LLM Call', desc: 'Cryptographic proof that this exact prompt, from this exact user, with these exact permissions.' },
+            ].map((step, i) => (
+              <div key={i} className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 space-y-1">
+                <div className="text-lg">{step.icon}</div>
+                <div className="text-xs font-semibold text-zinc-200">{step.title}</div>
+                <div className="text-xs text-zinc-500 leading-relaxed">{step.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <code className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-mono text-emerald-400">
+              npm install zeroproof-sdk
+            </code>
+            <div className="flex items-center gap-1 text-xs text-zinc-500">
+              <Code2 className="h-3.5 w-3.5" />
+              Works with OpenAI, Anthropic, Groq, Gemini — any LLM
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="mx-auto max-w-6xl px-6 py-8 space-y-8">
 
@@ -228,11 +313,13 @@ export default function Home() {
 
               <TabsContent value="agent" className="space-y-3">
                 <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 px-4 py-3 text-sm text-purple-300">
-                  <strong className="text-purple-200">Scene 3 — Indirect Prompt Injection:</strong> An AI
-                  research agent fetches a real web page containing a hidden injection attack. Toggle the
-                  switch to see ZeroProof&apos;s capability check block the injection at Layer 2 — the
-                  malicious instruction requires{' '}
-                  <code className="bg-zinc-800 px-1 rounded">external_api_write</code>, which was never granted.
+                  <strong className="text-purple-200">Scene 3 — Real Indirect Prompt Injection:</strong> An AI
+                  research agent fetches a <a href="/attacker" target="_blank" className="underline text-purple-200 hover:text-white">real webpage</a> that
+                  looks like a normal climate article. The injection is hidden in the Methodology section —
+                  no &quot;ignore instructions,&quot; just text that looks like a legitimate data sharing protocol. Two
+                  real LLM calls happen in sequence. We tested this injection against 7 AI models — 5 were fooled, including
+                  GPT-oss-120B and LLaMA 4.{' '}
+                  <code className="bg-zinc-800 px-1 rounded">external_api_write</code> is never in your grant — Layer 2 blocks it.
                 </div>
                 <AgentPipelineDemo sessionId={sessionId} grantToken={grantToken} grantedCapabilities={grantedCaps} onThreat={addThreatEvent} />
               </TabsContent>
