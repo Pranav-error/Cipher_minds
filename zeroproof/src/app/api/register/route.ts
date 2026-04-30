@@ -30,15 +30,14 @@ export async function POST(req: NextRequest) {
       userName: username ?? userId,
       userID: new TextEncoder().encode(userId),
       attestationType: 'none',
-      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred', authenticatorAttachment: 'platform' },
+      authenticatorSelection: { residentKey: 'preferred', userVerification: 'discouraged' },
     });
 
-    // Sign challenge into a token — no server state needed
     const challengeToken = await signToken({
       challenge: options.challenge,
       userId,
       context: 'reg',
-      exp: Date.now() + 5 * 60 * 1000, // 5 min
+      exp: Date.now() + 5 * 60 * 1000,
     } satisfies ChallengePayload);
 
     return NextResponse.json({ options, challengeToken });
@@ -65,16 +64,15 @@ export async function POST(req: NextRequest) {
       }
 
       const { credential } = verification.registrationInfo;
-      const credentialId = credential.id; // Already Base64URLString in @simplewebauthn/server v13
+      const credentialId = credential.id;
       const publicKeyHex = Buffer.from(credential.publicKey).toString('hex');
 
-      // Sign credential into a token the client stores in localStorage
       const credentialToken = await signToken({
         credentialId,
         publicKeyHex,
         counter: credential.counter,
         userId,
-        exp: Date.now() + 24 * 60 * 60 * 1000, // 24h
+        exp: Date.now() + 24 * 60 * 60 * 1000,
       } satisfies CredentialPayload);
 
       return NextResponse.json({ verified: true, credentialId, credentialToken });

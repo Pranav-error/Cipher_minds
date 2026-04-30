@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { CAPABILITY_LABELS, CAPABILITY_RISK, type AgentCapability } from '@/lib/capabilities';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { Fingerprint, CheckCircle2 } from 'lucide-react';
 

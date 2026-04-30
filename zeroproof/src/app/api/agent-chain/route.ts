@@ -9,7 +9,7 @@ import {
   type AttestationLink,
   type TransformType,
 } from '@/lib/agentAttestation';
-import { getGrant } from '@/lib/sessionStore';
+import { verifyToken, type GrantPayload } from '@/lib/tokenSession';
 import * as ed from '@noble/ed25519';
 
 export async function POST(req: NextRequest) {
@@ -17,32 +17,40 @@ export async function POST(req: NextRequest) {
   const action = url.searchParams.get('action') ?? 'verify';
 
   if (action === 'register') {
-    // Register a simulated agent with its public key
     const { agentId, publicKeyHex, allowedCapabilities, allowedTransforms } = await req.json();
-
     registerAgent({
       agentId,
       publicKey: Buffer.from(publicKeyHex, 'hex'),
       allowedCapabilities,
       allowedTransforms: allowedTransforms as TransformType[],
     });
-
     return NextResponse.json({ registered: true, agentId });
   }
 
   if (action === 'verify') {
-    const { sessionId, chain } = await req.json() as {
+    const { sessionId, chain, grantToken } = await req.json() as {
       sessionId: string;
       chain: AttestationLink[];
+      grantToken: string;
     };
 
-    const grant = getGrant(sessionId);
-    if (!grant) {
+    if (!grantToken) {
       return NextResponse.json({
         valid: false,
         layer: 2,
-        reason: 'Session grant not found or expired',
+        reason: 'Missing grantToken — pass the signed grant token from the capability grant step',
       }, { status: 400 });
+    }
+
+    // FIX: use stateless token verification instead of the in-memory getGrant()
+    // which was never populated after the codebase was refactored to use signed tokens.
+    const grant = await verifyToken<GrantPayload>(grantToken);
+    if (!grant || grant.sessionId !== sessionId || grant.expiresAt < Date.now()) {
+      return NextResponse.json({
+        valid: false,
+        layer: 2,
+        reason: 'Grant token invalid or expired — re-authorize capabilities',
+      }, { status: 401 });
     }
 
     const result = await verifyChain(chain, grant.granted);
@@ -56,7 +64,6 @@ export async function POST(req: NextRequest) {
     }, { status: result.valid ? 200 : 400 });
   }
 
-  // Utility: generate agent keypair (for demo setup)
   if (action === 'keygen') {
     const privKey = ed.utils.randomSecretKey();
     const pubKey = await ed.getPublicKeyAsync(privKey);

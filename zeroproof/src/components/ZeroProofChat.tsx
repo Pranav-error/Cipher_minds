@@ -63,20 +63,23 @@ export function ZeroProofChat({ userId, sessionId, grantToken, mitm = false, def
     setLayer(2, { status: 'idle', reason: undefined });
     setLayer(3, { status: 'idle', reason: undefined });
 
-    const effectivePrompt = mitm ? mitmText : originalPrompt;
-    const wasTampered = effectivePrompt !== originalPrompt;
+    const attemptedPrompt = mitm ? mitmText : originalPrompt;
+    const wasTampered = attemptedPrompt !== originalPrompt;
 
     if (wasTampered) {
       setMessages(prev => [...prev, {
         role: 'system',
-        content: `[MITM]: Intercepted! Replacing with: "${effectivePrompt}"`,
+        content: `[MITM]: Intercepted! Attempting to replace with: "${attemptedPrompt}"`,
         tampered: true,
       }]);
     }
 
     try {
-      const { signAndVerifyPrompt } = await import('@/lib/webauthnClient');
-      const { verified, reason, attestation: att } = await signAndVerifyPrompt(userId, effectivePrompt, sessionId);
+      const { secureSignedChat, signAndVerifyPrompt } = await import('@/lib/webauthnClient');
+      const result = wasTampered
+        ? await signAndVerifyPrompt(userId, originalPrompt, sessionId, attemptedPrompt)
+        : await secureSignedChat(userId, originalPrompt, sessionId);
+      const { verified, reason, attestation: att } = result;
 
       if (att) {
         setAttestation(prev => ({
@@ -108,13 +111,6 @@ export function ZeroProofChat({ userId, sessionId, grantToken, mitm = false, def
 
       logEvent({ layer: 'Layer 1', action: 'Prompt Integrity', status: 'passed', reason: 'WebAuthn assertion valid' });
 
-      const chatRes = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: effectivePrompt, grantToken }),
-      });
-      const data = await chatRes.json();
-
       setAttestation(prev => ({
         ...prev,
         layers: [
@@ -125,9 +121,13 @@ export function ZeroProofChat({ userId, sessionId, grantToken, mitm = false, def
         ],
       }));
 
+      const assistantText = 'response' in result && typeof result.response === 'string'
+        ? result.response
+        : 'No response';
+
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: data.response ?? data.error ?? 'No response',
+        content: assistantText,
         verified: true,
       }]);
 

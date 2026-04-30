@@ -78,6 +78,8 @@ export function AgentPipelineDemo({ sessionId, grantToken, grantedCapabilities, 
     setStep('fetcher', { status: 'active', detail: 'Fetching from live URL... [using web_fetch_text]' });
     await sleep(500);
 
+    const hasFetchGrant = grantedCapabilities.includes('web_fetch_text');
+    const hasExternalWriteGrant = grantedCapabilities.includes('external_api_write');
     const mode = injected ? 'malicious' : 'clean';
     const pageRes = await fetch(`/api/test-page?mode=${mode}`);
     const pageContent = await pageRes.text();
@@ -99,7 +101,21 @@ export function AgentPipelineDemo({ sessionId, grantToken, grantedCapabilities, 
     setLayer(2, { status: 'checking' });
     await sleep(500);
 
-    if (isMalicious) {
+    if (!hasFetchGrant) {
+      setLayer(2, {
+        status: 'fail',
+        reason: "Research agent requires 'web_fetch_text' but it is missing from the capability grant",
+      });
+      setStep('gate', { status: 'fail', detail: 'BLOCKED: Missing fetch capability' });
+      setStep('llm', { status: 'fail', detail: 'Request never reached LLM' });
+      const reason = `Session ${sessionId.slice(0, 8)} missing required capability 'web_fetch_text'.`;
+      setBlocked(`Layer 2 blocked: ${reason}`);
+      logEvent({ layer: 'Layer 2', action: 'Capability Check', status: 'blocked', reason });
+      setRunning(false);
+      return;
+    }
+
+    if (isMalicious && !hasExternalWriteGrant) {
       setLayer(2, {
         status: 'fail',
         reason: "Injected instruction requires 'external_api_write' — not in capability grant",
