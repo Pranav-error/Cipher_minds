@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "prove:injection-local": "node scripts/prove-injection-local.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ShieldX, ShieldCheck, Skull, Wifi, AlertOctagon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,11 @@ const INIT_LAYERS: LayerState[] = [
 ];
 
 export default function AttackDemoPage() {
-  const [token,       setToken]       = useState('');
+  const [token] = useState(() => (
+    typeof window === 'undefined'
+      ? ''
+      : (new URLSearchParams(window.location.search).get('token') ?? '')
+  ));
   const [running,     setRunning]     = useState(false);
   const [attackType,  setAttackType]  = useState<'climate' | 'readme'>('climate');
   const [layers,      setLayers]      = useState<LayerState[]>(INIT_LAYERS);
@@ -29,13 +33,6 @@ export default function AttackDemoPage() {
   const [agentOutput, setAgentOutput] = useState('');
   const [fetchedRaw,  setFetchedRaw]  = useState('');
   const [isProtected, setIsProtected] = useState(true);
-
-  useEffect(() => {
-    // Read token from URL query param
-    const params = new URLSearchParams(window.location.search);
-    const t = params.get('token');
-    if (t) setToken(t);
-  }, []);
 
   function resetState() {
     setLayers(INIT_LAYERS);

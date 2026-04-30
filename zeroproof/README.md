@@ -65,7 +65,7 @@ Existing approaches — content filters, prompt hardening, output monitoring —
 - **Layer 2 is deterministic** — capability checks are set intersection, not LLM judgment. An agent trying `external_api_write` when only `web_fetch_text` was granted is rejected with zero ambiguity, no matter what instructions it received.
 - **Layer 3 is not the primary gate** — any LLM-based intent check can itself be prompt-injected. ZeroProof uses embeddings only for semantic sanity-checking after the deterministic checks pass.
 - **The private key never leaves the device** — WebAuthn uses the Secure Enclave (Touch ID / Face ID). There is no password, no secret to steal from the server.
-- **Serverless-safe by design** — all session state lives in HMAC-signed tokens held by the client. No shared memory needed between serverless instances.
+- **Serverless-safe token sessions** — capability/session state lives in HMAC-signed tokens held by the client; replay nonce storage should use shared Redis in production.
 
 ---
 
@@ -214,6 +214,25 @@ RP_ID=localhost
 
 # HMAC token signing secret — change this before any real deployment
 WEBAUTHN_SECRET=change-this-to-a-random-32-char-secret
+
+# Production replay protection (recommended): Upstash Redis REST
+UPSTASH_REDIS_REST_URL=https://<your-upstash-endpoint>.upstash.io
+UPSTASH_REDIS_REST_TOKEN=<your-upstash-token>
+
+### 3. Run local prompt-injection proof against Ollama (optional)
+
+If you have Ollama running locally, this command produces a side-by-side proof:
+- vulnerable wrapper (untrusted content treated as instructions) can be hijacked
+- ZeroProof-style wrapper (untrusted content treated as data) resists the same payloads
+
+```bash
+npm run prove:injection-local
+# optional model override:
+OLLAMA_MODEL=llama3.1:8b npm run prove:injection-local
+```
+
+# Protect agent admin endpoints (/api/agent-chain?action=register|keygen)
+AGENT_ADMIN_SECRET=change-this-admin-secret
 ```
 
 ### 3. Start the dev server
@@ -256,6 +275,9 @@ printf '%s' 'gsk_your_groq_key' | vercel env add GROQ_API_KEY production
 printf '%s' 'zeroproof-xi.vercel.app' | vercel env add RP_ID production
 printf '%s' 'https://zeroproof-xi.vercel.app' | vercel env add NEXT_PUBLIC_ORIGIN production
 printf '%s' 'your-random-secret-min-32-chars' | vercel env add WEBAUTHN_SECRET production
+printf '%s' 'https://<your-upstash-endpoint>.upstash.io' | vercel env add UPSTASH_REDIS_REST_URL production
+printf '%s' '<your-upstash-token>' | vercel env add UPSTASH_REDIS_REST_TOKEN production
+printf '%s' 'your-admin-secret' | vercel env add AGENT_ADMIN_SECRET production
 ```
 
 ### 3. Deploy
@@ -291,7 +313,7 @@ Per-prompt integrity check:
   Client sends assertion + challengeToken → server verifies signature + burns nonce
 ```
 
-The only server-side state is a `Map<nonce, expiry>` with a 60-second TTL. Even if an instance restarts and loses this map, expired nonces are harmless.
+Replay protection is enforced by single-use nonces with 60-second TTL. For production/serverless deployments, configure shared Redis via Upstash REST (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`) so nonce consumption is atomic across all instances. In local dev, the in-memory fallback map is used.
 
 ---
 
@@ -346,7 +368,10 @@ Returns: `{ valid: boolean, reason: string, similarity?: number }`
 | `GROQ_API_KEY` | Yes | Groq API key for Llama 3.3 70B |
 | `RP_ID` | Yes (prod) | WebAuthn Relying Party ID — exact domain, no protocol, no trailing slash or space |
 | `NEXT_PUBLIC_ORIGIN` | Yes (prod) | Full origin including protocol — `https://zeroproof-xi.vercel.app` |
-| `WEBAUTHN_SECRET` | Recommended | 32+ character secret for HMAC token signing. Falls back to an insecure dev default. |
+| `WEBAUTHN_SECRET` | Yes (prod) | 32+ character secret for HMAC token signing. Required outside development. |
+| `UPSTASH_REDIS_REST_URL` | Recommended (prod) | Upstash Redis REST URL for distributed nonce replay protection. |
+| `UPSTASH_REDIS_REST_TOKEN` | Recommended (prod) | Upstash Redis REST bearer token. |
+| `AGENT_ADMIN_SECRET` | Recommended (prod) | Shared secret required to call `/api/agent-chain?action=register|keygen` via `x-admin-secret`. |
 
 ---
 

@@ -12,11 +12,22 @@ import {
 import { verifyToken, type GrantPayload } from '@/lib/tokenSession';
 import * as ed from '@noble/ed25519';
 
+function hasAdminAccess(req: NextRequest): boolean {
+  const adminSecret = process.env.AGENT_ADMIN_SECRET?.trim();
+  if (!adminSecret) {
+    return process.env.NODE_ENV !== 'production';
+  }
+  return req.headers.get('x-admin-secret') === adminSecret;
+}
+
 export async function POST(req: NextRequest) {
   const url = new URL(req.url);
   const action = url.searchParams.get('action') ?? 'verify';
 
   if (action === 'register') {
+    if (!hasAdminAccess(req)) {
+      return NextResponse.json({ registered: false, reason: 'Admin authorization required' }, { status: 403 });
+    }
     const { agentId, publicKeyHex, allowedCapabilities, allowedTransforms } = await req.json();
     registerAgent({
       agentId,
@@ -65,6 +76,9 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === 'keygen') {
+    if (!hasAdminAccess(req)) {
+      return NextResponse.json({ generated: false, reason: 'Admin authorization required' }, { status: 403 });
+    }
     const privKey = ed.utils.randomSecretKey();
     const pubKey = await ed.getPublicKeyAsync(privKey);
     return NextResponse.json({

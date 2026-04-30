@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ verified: false, layer: 1, reason: 'Timestamp outside valid window (possible replay)' }, { status: 400 });
     }
 
-    if (!consumeNonce(nonce)) {
+    if (!await consumeNonce(nonce)) {
       return NextResponse.json({ verified: false, layer: 1, reason: 'Nonce already consumed (replay attack detected)' }, { status: 400 });
     }
 

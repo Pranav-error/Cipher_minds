@@ -79,7 +79,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ verified: false, layer: 1, reason: 'Challenge token invalid or expired' }, { status: 400 });
     }
 
-    const { prompt, sessionId, timestamp } = JSON.parse(challengePayload.extra!);
+    const { prompt, sessionId, nonce: signedNonce, timestamp } = JSON.parse(challengePayload.extra!) as {
+      prompt: string;
+      sessionId: string;
+      nonce: string;
+      timestamp: number;
+    };
 
     const grant = await verifyToken<GrantPayload>(grantToken);
     if (!grant || grant.sessionId !== sessionId || grant.expiresAt < Date.now()) {
@@ -90,7 +95,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ verified: false, layer: 1, reason: 'Timestamp outside valid window (possible replay)' }, { status: 400 });
     }
 
-    if (!consumeNonce(nonce)) {
+    if (nonce !== signedNonce) {
+      return NextResponse.json({ verified: false, layer: 1, reason: 'Nonce mismatch between signed challenge and assertion payload' }, { status: 400 });
+    }
+
+    if (!await consumeNonce(signedNonce)) {
       return NextResponse.json({ verified: false, layer: 1, reason: 'Nonce already consumed (replay attack detected)' }, { status: 400 });
     }
 

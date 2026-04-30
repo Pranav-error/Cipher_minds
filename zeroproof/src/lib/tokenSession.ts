@@ -2,10 +2,27 @@
 // Replaces the in-memory Map store so it works across serverless instances.
 // Each token is: base64url(JSON payload) + "." + base64url(HMAC-SHA256 signature)
 
-const SECRET = process.env.WEBAUTHN_SECRET ?? 'zeroproof-dev-secret-change-in-prod';
+const DEV_FALLBACK_SECRET = 'zeroproof-dev-secret-change-in-prod';
+let warnedMissingSecret = false;
+
+function getSecret(): string {
+  const configured = process.env.WEBAUTHN_SECRET?.trim();
+  if (configured) return configured;
+
+  if (process.env.NODE_ENV === 'development') {
+    if (!warnedMissingSecret) {
+      warnedMissingSecret = true;
+      console.warn('[ZeroProof] WEBAUTHN_SECRET is missing. Using insecure development fallback secret.');
+    }
+    return DEV_FALLBACK_SECRET;
+  }
+
+  throw new Error('WEBAUTHN_SECRET is required in non-development environments.');
+}
 
 async function getKey(usage: KeyUsage) {
-  const keyBytes = new TextEncoder().encode(SECRET.padEnd(32, '0').slice(0, 32));
+  const secret = getSecret();
+  const keyBytes = new TextEncoder().encode(secret.padEnd(32, '0').slice(0, 32));
   return crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, [usage]);
 }
 
