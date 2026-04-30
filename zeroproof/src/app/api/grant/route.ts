@@ -46,8 +46,8 @@ export async function POST(req: NextRequest) {
     const options = await generateAuthenticationOptions({
       rpID: rpId,
       challenge,
-      allowCredentials: [{ id: cred.credentialId, transports: ['internal'] }],
-      userVerification: 'preferred',
+      allowCredentials: [{ id: cred.credentialId }],
+      userVerification: 'discouraged',
     });
 
     const challengeToken = await signToken({
@@ -93,7 +93,6 @@ export async function POST(req: NextRequest) {
 
       const grant = JSON.parse(challengePayload.extra!);
 
-      // Sign the grant into a token the client stores in localStorage
       const grantToken = await signToken({
         sessionId: grant.sessionId,
         granted: grant.granted,

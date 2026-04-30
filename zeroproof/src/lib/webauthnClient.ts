@@ -69,7 +69,7 @@ export async function grantCapabilities(
     const body = await optRes.json().catch(() => ({}));
     throw new Error(body.error ?? `Grant options failed: ${optRes.status}`);
   }
-  const { options, sessionId, challengeToken } = await optRes.json();
+  const { options, challengeToken } = await optRes.json();
 
   // WebAuthn ceremony to sign the capability grant
   const assertion = await startAuthentication({ optionsJSON: options });
@@ -96,6 +96,7 @@ export async function signAndVerifyPrompt(
   userId: string,
   prompt: string,
   sessionId: string,
+  tamperedPrompt?: string,
 ): Promise<{
   verified: boolean;
   reason?: string;
@@ -134,12 +135,73 @@ export async function signAndVerifyPrompt(
   const verRes = await fetch('/api/verify?action=assert', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nonce, response: assertion, credentialToken, grantToken, challengeToken }),
+    body: JSON.stringify({ nonce, response: assertion, credentialToken, grantToken, challengeToken, actualPrompt: tamperedPrompt ?? prompt }),
   });
   const result = await verRes.json();
   return {
     verified: result.verified ?? false,
     reason: result.reason,
+    attestation: {
+      challengeHash: options.challenge ?? '',
+      nonce,
+      timestamp,
+      assertionClientDataJSON: assertion.response.clientDataJSON,
+    },
+  };
+}
+
+export async function secureSignedChat(
+  userId: string,
+  prompt: string,
+  sessionId: string,
+): Promise<{
+  verified: boolean;
+  reason?: string;
+  response?: string;
+  model?: string;
+  grantedCapabilities?: string[];
+  attestation?: {
+    challengeHash: string;
+    nonce: string;
+    timestamp: number;
+    assertionClientDataJSON?: string;
+  };
+}> {
+  const credentialToken = getStoredCredentialToken();
+  const grantToken = getStoredGrantToken();
+  if (!credentialToken || !grantToken) {
+    return { verified: false, reason: 'Missing credential or grant token' };
+  }
+
+  const nonce = crypto.randomUUID();
+  const timestamp = Date.now();
+
+  const optRes = await fetch('/api/secure-chat?action=options', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, prompt, sessionId, nonce, timestamp, credentialToken, grantToken }),
+  });
+  if (!optRes.ok) {
+    const body = await optRes.json().catch(() => ({}));
+    return { verified: false, reason: body.error ?? `Options failed: ${optRes.status}` };
+  }
+
+  const { options, challengeToken } = await optRes.json();
+  const assertion = await startAuthentication({ optionsJSON: options });
+
+  const chatRes = await fetch('/api/secure-chat?action=assert', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ response: assertion, credentialToken, grantToken, challengeToken }),
+  });
+  const result = await chatRes.json();
+
+  return {
+    verified: result.verified ?? false,
+    reason: result.reason,
+    response: result.response,
+    model: result.model,
+    grantedCapabilities: result.grantedCapabilities,
     attestation: {
       challengeHash: options.challenge ?? '',
       nonce,

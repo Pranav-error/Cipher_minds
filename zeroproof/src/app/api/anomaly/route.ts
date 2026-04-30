@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   const action = url.searchParams.get('action') ?? 'record';
 
   if (action === 'record') {
-    const { sessionId, success, layer, reason } = await req.json() as {
+    const { sessionId, success } = await req.json() as {
       sessionId: string;
       success: boolean;
       layer: number;
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     globalAttempts++;
     if (!success) globalFailures++;
 
-    let s = stats.get(sessionId) ?? { attempts: 0, failures: 0, flagged: false };
+    const s = stats.get(sessionId) ?? { attempts: 0, failures: 0, flagged: false };
     s.attempts++;
     if (!success) {
       s.failures++;

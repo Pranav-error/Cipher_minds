@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CapabilityGranter } from '@/components/CapabilityGranter';
 import { ZeroProofChat } from '@/components/ZeroProofChat';
 import { AgentPipelineDemo } from '@/components/AgentPipelineDemo';
+import { LiveMitmDemo } from '@/components/LiveMitmDemo';
 import { ThreatLog, type ThreatEvent } from '@/components/ThreatLog';
 import { cn } from '@/lib/utils';
 import type { AgentCapability } from '@/lib/capabilities';
@@ -184,6 +185,7 @@ export default function Home() {
             <Tabs defaultValue="normal" className="space-y-4">
               <TabsList className="bg-zinc-800 border border-zinc-700">
                 <TabsTrigger value="normal">Normal Chat</TabsTrigger>
+                <TabsTrigger value="live-mitm">Live MITM</TabsTrigger>
                 <TabsTrigger value="mitm">MITM Attack</TabsTrigger>
                 <TabsTrigger value="agent">Agent Pipeline</TabsTrigger>
                 <TabsTrigger value="replay">Replay Attack</TabsTrigger>
@@ -196,6 +198,15 @@ export default function Home() {
                   the LLM. The Proof Chain panel shows the actual cryptographic data for each request.
                 </div>
                 <ZeroProofChat userId={userId} sessionId={sessionId} grantToken={grantToken} onThreat={addThreatEvent} />
+              </TabsContent>
+
+              <TabsContent value="live-mitm" className="space-y-3">
+                <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-sm text-blue-300">
+                  <strong className="text-blue-200">Live view:</strong> The left panel is the real
+                  user, the middle panel is the man-in-the-middle attacker, and the right panel shows
+                  ZeroProof verifying the signed prompt before anything reaches the LLM.
+                </div>
+                <LiveMitmDemo userId={userId} sessionId={sessionId} onThreat={addThreatEvent} />
               </TabsContent>
 
               <TabsContent value="mitm" className="space-y-3">
