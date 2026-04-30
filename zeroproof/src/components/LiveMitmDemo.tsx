@@ -27,7 +27,7 @@ export function LiveMitmDemo({ userId, sessionId, onThreat }: Props) {
   const [userPrompt, setUserPrompt] = useState(DEFAULT_USER_PROMPT);
   const [attackPrompt, setAttackPrompt] = useState(DEFAULT_ATTACK_PROMPT);
   const [running, setRunning] = useState(false);
-  const [mode, setMode] = useState<'clean' | 'attack' | null>(null);
+  const [mode, setMode] = useState<'clean' | 'relay' | 'attack' | null>(null);
   const [result, setResult] = useState('');
   const [proof, setProof] = useState<{ nonce?: string; challenge?: string; reason?: string }>({});
   const [steps, setSteps] = useState<DemoStep[]>([
@@ -54,7 +54,7 @@ export function LiveMitmDemo({ userId, sessionId, onThreat }: Props) {
     onThreat?.({ ...event, id: crypto.randomUUID(), timestamp: Date.now() });
   }
 
-  async function runDemo(nextMode: 'clean' | 'attack') {
+  async function runDemo(nextMode: 'clean' | 'relay' | 'attack') {
     if (!userPrompt.trim() || running) return;
 
     setRunning(true);
@@ -68,7 +68,41 @@ export function LiveMitmDemo({ userId, sessionId, onThreat }: Props) {
 
       setStep(0, { status: 'active', detail: 'Browser is asking the hardware key to sign the prompt' });
 
-      if (nextMode === 'attack') {
+      if (nextMode === 'relay') {
+        setStep(1, { status: 'pass', detail: 'MITM relays the same prompt without changing it' });
+        setStep(2, { status: 'active', detail: 'Checking whether signed prompt equals forwarded prompt' });
+
+        const verification = await signAndVerifyPrompt(userId, userPrompt.trim(), sessionId, userPrompt.trim());
+        setProof({
+          nonce: verification.attestation?.nonce,
+          challenge: verification.attestation?.challengeHash,
+          reason: verification.reason,
+        });
+
+        if (!verification.verified) {
+          setStep(0, { status: 'pass', detail: 'Original user prompt was signed' });
+          setStep(2, { status: 'fail', detail: verification.reason ?? 'Verification failed' });
+          setStep(3, { status: 'fail', detail: 'Request blocked' });
+          setResult(`BLOCKED: ${verification.reason ?? 'Verification failed'}`);
+          logEvent({
+            layer: 'Layer 1',
+            action: 'MITM Relay',
+            status: 'blocked',
+            reason: verification.reason ?? 'Verification failed',
+          });
+        } else {
+          setStep(0, { status: 'pass', detail: 'User signed the exact prompt' });
+          setStep(2, { status: 'pass', detail: 'No prompt change detected' });
+          setStep(3, { status: 'pass', detail: 'Relay is allowed because content is unchanged' });
+          setResult('PASSED: The middle layer relayed the exact signed prompt. ZeroProof only blocks tampering, not the presence of a relay.');
+          logEvent({
+            layer: 'Layer 1',
+            action: 'MITM Relay',
+            status: 'passed',
+            reason: 'Forwarded prompt matched the signed user prompt',
+          });
+        }
+      } else if (nextMode === 'attack') {
         setStep(1, { status: 'fail', detail: 'MITM replaced the prompt after the user signed it' });
         setStep(2, { status: 'active', detail: 'Comparing signed prompt with forwarded prompt' });
 
@@ -180,10 +214,19 @@ export function LiveMitmDemo({ userId, sessionId, onThreat }: Props) {
             disabled={running}
           />
           <Button
+            onClick={() => runDemo('relay')}
+            disabled={running || !userPrompt.trim()}
+            variant="outline"
+            className="mt-3 w-full border-zinc-500/50 text-zinc-300 hover:bg-zinc-800"
+          >
+            <Send className="h-4 w-4" />
+            Relay Unchanged
+          </Button>
+          <Button
             onClick={() => runDemo('attack')}
             disabled={running || !userPrompt.trim() || !attackPrompt.trim()}
             variant="outline"
-            className="mt-3 w-full border-red-500/50 text-red-300 hover:bg-red-500/10"
+            className="mt-2 w-full border-red-500/50 text-red-300 hover:bg-red-500/10"
           >
             <AlertTriangle className="h-4 w-4" />
             Launch Tamper Attempt
@@ -223,7 +266,7 @@ export function LiveMitmDemo({ userId, sessionId, onThreat }: Props) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <section className="rounded-xl border border-zinc-700 bg-zinc-900 p-4 lg:col-span-2">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">
-            {mode === 'attack' ? 'Blocked Payload / Result' : 'LLM Response'}
+            {mode === 'attack' ? 'Blocked Payload / Result' : mode === 'relay' ? 'Relay Verification Result' : 'LLM Response'}
           </p>
           <div className={cn(
             'min-h-24 whitespace-pre-wrap rounded-lg border px-3 py-2 text-sm',
@@ -231,7 +274,7 @@ export function LiveMitmDemo({ userId, sessionId, onThreat }: Props) {
               ? 'border-red-500/30 bg-red-950/20 text-red-200'
               : 'border-zinc-700 bg-zinc-950 text-zinc-200',
           )}>
-            {result || 'Run a clean request or MITM attack to see the live result.'}
+            {result || 'Run a clean request, unchanged relay, or tamper attempt to see the live result.'}
           </div>
         </section>
 
