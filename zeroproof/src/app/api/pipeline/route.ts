@@ -69,7 +69,12 @@ export async function POST(req: NextRequest) {
         try {
           const pageRes = await fetch(fetchUrl);
           pageContent   = await pageRes.text();
-          pageContent   = pageContent.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+          pageContent   = pageContent
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
           send('step', {
             agent: 'Research Agent',
             status: 'running',
@@ -238,7 +243,7 @@ Rules:
         if (isProtected) {
           if (drifted) {
             send('layer', { layer: 3, status: 'fail', reason: `Drift detected: ${driftWhy}` });
-            send('layer', { layer: 2, status: 'fail', reason: 'Pipeline stopped at Layer 3 — capability check not reached' });
+            send('layer', { layer: 2, status: 'skipped', reason: 'Layer 3 caught drift first — capability check not needed' });
             send('blocked', { at: 'Drift Monitor', reason: `Layer 3 caught task drift: ${driftWhy}` });
             controller.close();
             return;

@@ -1,12 +1,12 @@
 'use client';
 
-import { Shield, ShieldCheck, ShieldX, ShieldOff, Loader2 } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldX, ShieldOff, Loader2, ChevronsRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface LayerStatus {
   label: string;
   description: string;
-  status: 'idle' | 'checking' | 'pass' | 'fail' | 'bypassed';
+  status: 'idle' | 'checking' | 'pass' | 'fail' | 'bypassed' | 'skipped';
   reason?: string;
 }
 
@@ -34,14 +34,16 @@ export function LayerStatusPanel({ layers = DEFAULT_LAYERS }: Props) {
             layer.status === 'pass'     && 'border-emerald-500/40 bg-emerald-500/5 text-emerald-300',
             layer.status === 'fail'     && 'border-red-500/40 bg-red-500/5 text-red-300',
             layer.status === 'bypassed' && 'border-orange-500/30 bg-orange-500/5 text-orange-300',
+            layer.status === 'skipped'  && 'border-zinc-600 bg-zinc-800/50 text-zinc-400',
           )}
         >
           <div className="mt-0.5 shrink-0">
-            {layer.status === 'idle'     && <Shield    className="h-4 w-4 text-zinc-500" />}
-            {layer.status === 'checking' && <Loader2   className="h-4 w-4 animate-spin text-yellow-400" />}
-            {layer.status === 'pass'     && <ShieldCheck className="h-4 w-4 text-emerald-400" />}
-            {layer.status === 'fail'     && <ShieldX   className="h-4 w-4 text-red-400" />}
-            {layer.status === 'bypassed' && <ShieldOff className="h-4 w-4 text-orange-400" />}
+            {layer.status === 'idle'     && <Shield         className="h-4 w-4 text-zinc-500" />}
+            {layer.status === 'checking' && <Loader2        className="h-4 w-4 animate-spin text-yellow-400" />}
+            {layer.status === 'pass'     && <ShieldCheck    className="h-4 w-4 text-emerald-400" />}
+            {layer.status === 'fail'     && <ShieldX        className="h-4 w-4 text-red-400" />}
+            {layer.status === 'bypassed' && <ShieldOff      className="h-4 w-4 text-orange-400" />}
+            {layer.status === 'skipped'  && <ChevronsRight  className="h-4 w-4 text-zinc-500" />}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -54,11 +56,13 @@ export function LayerStatusPanel({ layers = DEFAULT_LAYERS }: Props) {
                   layer.status === 'pass'     && 'bg-emerald-500/20 text-emerald-300',
                   layer.status === 'fail'     && 'bg-red-500/20 text-red-300',
                   layer.status === 'bypassed' && 'bg-orange-500/20 text-orange-300',
+                  layer.status === 'skipped'  && 'bg-zinc-700 text-zinc-400',
                 )}>
                   {layer.status === 'checking' ? 'Checking...'
                   : layer.status === 'pass'    ? 'PASS'
                   : layer.status === 'fail'    ? 'FAIL'
                   : layer.status === 'bypassed'? 'BYPASSED'
+                  : layer.status === 'skipped' ? 'NOT REACHED'
                   : ''}
                 </span>
               )}
