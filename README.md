@@ -318,11 +318,11 @@ Required env vars on Vercel:
 
 | Threat | Layer | Mechanism |
 |---|---|---|
-| MITM prompt modification | L1 | WebAuthn sig over SHA256(prompt) — any byte change fails |
-| Infrastructure compromise | L1 | Hash signed client-side before hitting server |
-| Prompt injection → capability escalation | L2 | Deterministic set intersection, no LLM |
-| Replay attacks | L1 | Single-use nonces, 60s TTL |
-| Token forgery | L0/L1 | HMAC-SHA256 — unforgeable without hardware key |
+| Server-side prompt tampering (rogue middleware, compromised infra) | L1 | Prompt hashed + signed client-side — any server-side modification breaks the hash |
+| Infrastructure compromise (Vercel breach, supply chain) | L1 | Trust anchor is hardware key on user device — attacker inside infra cannot forge signature |
+| Prompt injection → capability escalation | L2 | Deterministic set intersection — AI cannot request a capability not in signed grant |
+| Replay attacks | L1 | Single-use nonces, 60s TTL — captured proof is instantly invalid |
+| Token forgery | L0/L1 | HMAC-SHA256 — unforgeable without server secret + hardware key |
 | Behavioral drift within permissions | L3 | Embedding cosine similarity |
 
 ### What ZeroProof does not claim to prevent

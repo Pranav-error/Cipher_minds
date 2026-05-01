@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+ #!/usr/bin/env node
 // DEMO — Unprotected agent: no ZeroProof, no capability check.
 // Shows LLaMA reading the attacker page and deciding to call external_api_write.
 // This is what happens to every AI agent that doesn't have ZeroProof.
